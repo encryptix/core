@@ -1,0 +1,15 @@
+{
+  "domain": "climate_climote",
+  "name": "Climate | Smart Heating Controls",
+  "config_flow": true,
+  "documentation": "https://www.home-assistant.io/integrations/climote",
+  "requirements": ["polling", "xmljson"],
+  "ssdp": [],
+  "zeroconf": [],
+  "homekit": {},
+  "dependencies": [],
+  "codeowners": ["@VatzU", "@demonday", "@brianbola90", "@encryptix"],
+  "iot_class": "cloud_polling",
+  "integration_type": "hub",
+  "version": "2.0.0"
+}
