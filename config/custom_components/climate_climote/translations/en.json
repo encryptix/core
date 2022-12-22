@@ -13,17 +13,21 @@
         "data": {
           "climote_id": "Climote #",
           "password": "Password",
-          "username": "Username"
+          "username": "Username",
+          "interval": "Refresh Interval",
+          "boost": "Default Boost Duration"
         }
       }
     }
   },
   "options": {
     "step": {
-      "user": {
+      "init": {
         "data": {
           "password": "Password",
-          "username": "Username"
+          "username": "Username",
+          "interval": "Refresh Interval",
+          "boost": "Default Boost Duration"
         }
       }
     }

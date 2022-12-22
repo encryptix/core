@@ -1,17 +1,14 @@
-# COPY of BRIAN climate.py (using yaml config...)
 import logging
-
-import voluptuous as vol
-
-from .climote_service import ClimoteService
 from .const import DOMAIN
-
+from homeassistant.helpers.entity import DeviceInfo
 from datetime import timedelta
-
-
 from homeassistant.util import Throttle
-import homeassistant.helpers.config_validation as cv
-from homeassistant.components.climate import ClimateEntity, PLATFORM_SCHEMA
+
+# If climate needs this, number probably does too
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (
     SUPPORT_TARGET_TEMPERATURE,
     HVAC_MODE_OFF,
@@ -20,17 +17,13 @@ from homeassistant.components.climate.const import (
     CURRENT_HVAC_IDLE,
 )
 from homeassistant.const import (
-    CONF_ID,
-    CONF_NAME,
     ATTR_TEMPERATURE,
-    CONF_PASSWORD,
-    CONF_USERNAME,
     TEMP_CELSIUS,
-    CONF_DEVICES,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
+# TODO look into what all of this is for
 MIN_TIME_BETWEEN_UPDATES = timedelta(minutes=5)
 SCAN_INTERVAL = MIN_TIME_BETWEEN_UPDATES
 #: Interval in hours that module will try to refresh data from the climote.
@@ -45,34 +38,6 @@ SUPPORT_FLAGS = SUPPORT_TARGET_TEMPERATURE
 SUPPORT_MODES = [HVAC_MODE_HEAT, HVAC_MODE_OFF]
 
 
-def validate_name(config):
-    """Validate device name."""
-    if CONF_NAME in config:
-        return config
-    climoteid = config[CONF_ID]
-    name = "climote_{}".format(climoteid)
-    config[CONF_NAME] = name
-    return config
-
-
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
-    {
-        vol.Required(CONF_USERNAME): cv.string,
-        vol.Required(CONF_PASSWORD): cv.string,
-        vol.Required(CONF_ID): cv.string,
-        vol.Optional(CONF_REFRESH_INTERVAL, default=24): cv.string,
-    }
-)
-
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
-from homeassistant.config_entries import ConfigEntry
-
-# SOunds like I need a setup_platform() which is auto called....
-# Platform can then add entities...
-
-# def setup_platform(
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -86,41 +51,38 @@ async def async_setup_entry(
 
     climotesvc = hass.data[DOMAIN][entry.entry_id]
 
-    # username = config.get(CONF_USERNAME)
-    # password = config.get(CONF_PASSWORD)
-    # climoteid = config.get(CONF_ID)
-
     # interval = int(config.get(CONF_REFRESH_INTERVAL))
 
-    # Add devices
-    # climote = ClimoteService(username, password, climoteid)
-    # if not (climote.initialize()):
-    #     return False
-
+    # Add devices (these arent really devices.... are they? is a zone a device?)
     entities = []
 
-    for id, name in climotesvc.zones.items():
-        entities.append(Climote(climotesvc, id, name, 600))
+    if not climotesvc.zones:
+        # TODO proper error handling
+        raise Exception("There should have been zones by now")
+
+    for zone_id, region in climotesvc.zones.items():
+        entities.append(ClimoteEntity(climotesvc, zone_id, region))
     _LOGGER.info("3. Found entities %s", entities)
 
     add_entities(entities)
+    # async_add_entities??
+    return True
 
-    return
 
-
-class Climote(ClimateEntity):
+class ClimoteEntity(ClimateEntity):
     """Representation of a Climote device."""
 
-    def __init__(self, climoteService, zoneid, name, interval):
+    def __init__(self, climote_service, zone_id, name):
         """Initialize the thermostat."""
-        _LOGGER.info("Initialize Climote Entity")
-        self._climote = climoteService
-        self._zoneid = zoneid
+        _LOGGER.info("Initialize Climote Entity %s - %s" % (zone_id, name))
+        self._climote = climote_service
+        self._zoneid = zone_id
         self._name = name
         self._force_update = False
-        self.throttled_update = Throttle(timedelta(minutes=interval))(
-            self._throttled_update
-        )
+        self.throttled_update = Throttle(
+            timedelta(minutes=self._climote.refresh_interval)
+        )(self._throttled_update)
+        self._unique_id = f"climote_climate_{self._climote.device_id}_{self._zoneid}"
 
     @property
     def should_poll(self):
@@ -149,6 +111,11 @@ class Climote(ClimateEntity):
     def name(self):
         """Return the name of the thermostat."""
         return self._name
+
+    @property
+    def unique_id(self):
+        """Return unique ID for this device."""
+        return self._unique_id
 
     @property
     def icon(self):
@@ -209,7 +176,8 @@ class Climote(ClimateEntity):
     def set_hvac_mode(self, hvac_mode):
         if hvac_mode == HVAC_MODE_HEAT:
             """Turn Heating Boost On."""
-            res = self._climote.boost(self._zoneid, 1)
+            res = self._climote.boost_new(self._zoneid)
+            # res = self._climote.boost(self._zoneid, 1)
             if res:
                 self._force_update = True
             return res
@@ -233,7 +201,21 @@ class Climote(ClimateEntity):
     def update(self):
         self._climote.updateStatus(self._force_update)
 
+    # TODO look into what this is and how update above works
     async def _throttled_update(self, **kwargs):
         """Get the latest state from the thermostat with a throttle."""
         _LOGGER.info("_throttled_update Force: %s", self._force_update)
         self._climote.updateStatus(self._force_update)
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        """Return the device info."""
+        return DeviceInfo(
+            identifiers={
+                (DOMAIN),
+                self._climote.device_id,
+            },
+            name="Climote Hub",
+            manufacturer="Climote",
+            model="Remote Heating Controller",
+        )

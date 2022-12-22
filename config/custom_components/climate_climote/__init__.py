@@ -5,13 +5,18 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN, USERNAME, PASSWORD, CLIMOTE_ID
+from .const import (
+    DOMAIN,
+    USERNAME,
+    PASSWORD,
+    CLIMOTE_ID,
+    REFRESH_INTERVAL,
+    BOOST_DURATION,
+)
 
 from .climote_service import ClimoteService
 
-# TODO List the platforms that you want to support.
-# For your initial PR, limit it to 1 platform.
-PLATFORMS: list[Platform] = [Platform.CLIMATE]
+PLATFORMS: list[Platform] = [Platform.CLIMATE, Platform.NUMBER]
 import logging
 
 _LOGGER = logging.getLogger(__name__)
@@ -23,34 +28,41 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.info(f"async_setup_entry UniqueID [{entry.unique_id}] Data [{entry.data}]")
 
-    # TODO 1. Create API instance
+    # TODO: Why did I end up back in here when I updated the configuration (when the entry previously didnt exist), I then didnt have a climote # as its not in my options flow.
+    # NOW its happening when I refresh the page?
+    # 1. Create API instance
     username = entry.data[USERNAME]
     password = entry.data[PASSWORD]
     climoteid = entry.data[CLIMOTE_ID]
+    refresh_interval = entry.data[REFRESH_INTERVAL]
+    default_boost_duration = entry.data[BOOST_DURATION]
 
-    # Repr of service, no attempt at login
-    climote_svc = ClimoteService(username, password, climoteid)
+    climote_svc = ClimoteService(
+        username,
+        password,
+        climoteid,
+        _LOGGER,
+        refresh_interval=refresh_interval,
+        default_boost_duration=default_boost_duration,
+    )
 
+    # 2. Validate the API connection (and authentication)
     # This now does the first HTTP request
     # if not (climote_svc.initialize()):
     #    return False
-    # Convert to async
+
     init_successful = await hass.async_add_executor_job(climote_svc.initialize)
     if not init_successful:
         a = 1
         return False
-        # TODO should this raise?
+        # TODO should this raise? or return can read to find out
         # raise ConfigEntryNotReady
-    # climote = Climote(
-    #     username, password, climoteid, default_boost_duration_hrs, _LOGGER
-    # )
-    # TODO 2. Validate the API connection (and authentication)
-    # TODO 3. Store an API object for your platforms to access
-    # hass.data[DOMAIN][entry.entry_id] = MyApi(...)
 
-    # TODO until using a coordinator
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = climote_svc
-    # RAY: I commented this out
+    # 3. Store an API object for your platforms to access
+    # TODO consider using a coordinator rather than class directly
+    hass.data[DOMAIN][entry.entry_id] = climote_svc
+
+    # 4. Delegate setup to platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True

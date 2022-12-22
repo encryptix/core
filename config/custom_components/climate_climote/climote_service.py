@@ -5,15 +5,23 @@ import json
 from bs4 import BeautifulSoup
 import polling
 import xmljson
-import logging
+
+# import logging
 from lxml import etree as ET
 
-_LOGGER = logging.getLogger(__name__)
+# _LOGGER = logging.getLogger(__name__)
 
-
-# This would eventually be a python package, nothing HA specific in it?
+# This would eventually be a python package, nothing HA specific in it
 class ClimoteService:
-    def __init__(self, username, password, passcode):
+    def __init__(
+        self,
+        username,
+        password,
+        passcode,
+        logger,
+        refresh_interval: 12,
+        default_boost_duration: 1,
+    ):
         self.s = requests.Session()
         self.s.headers.update(
             {"User-Agent": "Mozilla/5.0 Home Assistant Climote Service"}
@@ -24,6 +32,13 @@ class ClimoteService:
         self.creds = {"password": username, "username": passcode, "passcode": password}
         self.data = json.loads(_DEFAULT_JSON)
         self.zones = None
+        self.zones_boost_duration = {}
+        global _LOGGER
+        _LOGGER = logger
+
+        self.device_id = passcode
+        self.refresh_interval = refresh_interval
+        self.default_boost_duration = default_boost_duration
 
     def initialize(self):
         try:
@@ -35,7 +50,12 @@ class ClimoteService:
         finally:
             self.__logout()
 
+    def setZoneBoostTime(self, zone, duration):
+        self.zones_boost_duration[zone] = duration
+
     def __login(self):
+        return True
+
         r = self.s.post(_LOGIN_URL, data=self.creds)
         if r.status_code == requests.codes.ok:
             soup = BeautifulSoup(r.content, "lxml")
@@ -54,10 +74,17 @@ class ClimoteService:
             return self.logged_in
 
     def __logout(self):
+        return True
         _LOGGER.info("Logging Out")
         r = self.s.get(_LOGOUT_URL)
         _LOGGER.debug("Logging Out Result: %s", r.status_code)
         return r.status_code == requests.codes.ok
+
+    def boost_new(self, zoneid):
+        _LOGGER.info("Boosting Zone %s", zoneid)
+        time = self.zones_boost_duration.get(zoneid, self.default_boost_duration)
+        self.set_hvac_mode_on(zoneid)
+        return self.__boost(zoneid, time)
 
     def boost(self, zoneid, time):
         _LOGGER.info("Boosting Zone %s", zoneid)
@@ -100,6 +127,7 @@ class ClimoteService:
             self.__logout()
 
     def __getStatus(self, force):
+        return False
         res = None
         tmp = self.s.headers
         try:
@@ -120,6 +148,8 @@ class ClimoteService:
         return res
 
     def __updateStatus(self, force):
+        return False
+
         def is_done(r):
             return r.text != "0"
 
@@ -153,6 +183,9 @@ class ClimoteService:
         return res
 
     def __setConfig(self):
+        # I added
+        self.config = {}
+        return
         if self.logged_in is False:
             raise IllegalStateException("Not logged in")
 
@@ -162,6 +195,10 @@ class ClimoteService:
         self.config = xmljson.parker.data(xml)
 
     def __setZones(self):
+        default_zone = {"temperature": 1, "status": "5", "thermostat": 0, "active": 1}
+        self.zones = {1: "up", 2: "down", 3: "left"}
+        return
+
         if self.config is None:
             return
 
@@ -195,6 +232,7 @@ class ClimoteService:
 
     def __boost(self, zoneid, time):
         """Turn on the heat for a given zone, for a given number of hours"""
+        return True
         res = False
         try:
             self.__login()

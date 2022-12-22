@@ -11,7 +11,14 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import DOMAIN, CLIMOTE_ID, USERNAME, PASSWORD
+from .const import (
+    DOMAIN,
+    CLIMOTE_ID,
+    USERNAME,
+    PASSWORD,
+    REFRESH_INTERVAL,
+    BOOST_DURATION,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,8 +27,8 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
         vol.Required(CLIMOTE_ID): str,
         vol.Required(USERNAME): str,
         vol.Required(PASSWORD): str,
-        # vol.Required(BOOST_DURATION, default=0.5): float,
-        # vol.Required(POLLING_INTERVAL, default=5): int,
+        vol.Required(BOOST_DURATION, default=0.5): float,
+        vol.Required(REFRESH_INTERVAL, default=24): int,
     }
 )
 
@@ -65,7 +72,8 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     # InvalidAuth
 
     # Return info that you want to store in the config entry.
-    return {"title": data[CLIMOTE_ID]}
+    # TODO Think
+    return {"title": "******" + data[CLIMOTE_ID][-4:]}
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -85,7 +93,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         errors = {}
 
-        # TODO SHould I do this after input has been validated? WHy bother?
         if user_input.get(CLIMOTE_ID, None):
             await self.async_set_unique_id("climote_" + user_input[CLIMOTE_ID])
             self._abort_if_unique_id_configured()
@@ -106,7 +113,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
         )
 
-    # TODO should this be at the device level?
     @staticmethod
     @callback
     def async_get_options_flow(
@@ -140,20 +146,20 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Required(
                     PASSWORD, default=self.config_entry.data.get(PASSWORD)
                 ): str,
-                # vol.Required(
-                #    BOOST_DURATION,
-                #    default=self.config_entry.data.get(BOOST_DURATION),
-                # ): float,
-                # vol.Required(
-                #    POLLING_INTERVAL,
-                #    default=self.config_entry.data.get(POLLING_INTERVAL),
-                # ): int,
+                vol.Required(
+                    BOOST_DURATION,
+                    default=self.config_entry.data.get(BOOST_DURATION),
+                ): float,
+                vol.Required(
+                    REFRESH_INTERVAL,
+                    default=self.config_entry.data.get(REFRESH_INTERVAL),
+                ): int,
             }
         )
 
         # TODO , Signal Updates https://developers.home-assistant.io/docs/config_entries_options_flow_handler/#signal-updates
 
-        return self.async_show_form(step_id="user", data_schema=update_data_schema)
+        return self.async_show_form(step_id="init", data_schema=update_data_schema)
 
 
 class CannotConnect(HomeAssistantError):
